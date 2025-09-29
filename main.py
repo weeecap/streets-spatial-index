@@ -75,8 +75,6 @@ class NomenclaturalStreetIndexer:
 
 
 if __name__ == "__main__":
-    
-    root = tk.Tk()
     indexer = NomenclaturalStreetIndexer(500)
 
     print('Введите начало координат')

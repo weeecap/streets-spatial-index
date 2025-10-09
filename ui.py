@@ -1,4 +1,5 @@
 import os
+import logging 
 import pandas as pd
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QLabel, QLineEdit, QPushButton, QGroupBox, QProgressBar,
@@ -8,6 +9,8 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 
 from nomenclatural import NomenclaturalStreetIndexer
+
+logging.basicConfig(level=logging.INFO, filename='logs.log', filemode='w')
 
 class ProcessingThread(QThread):
 
@@ -27,58 +30,106 @@ class ProcessingThread(QThread):
     def run(self):
 
         try:
-            original_df = pd.read_excel(self.file_path)
+            df = pd.read_excel(self.file_path)
             
-            if self.x_col not in original_df.columns or self.y_col not in original_df.columns:
+            if self.x_col not in df.columns or self.y_col not in df.columns:
                 self.error_occurred.emit(f"Столбцы '{self.x_col}' и/или '{self.y_col}' не найдены в файле")
+                logging.critical('Column X or Y not found')
                 return
             
-            if self.street_col and self.street_col not in original_df.columns:
+            if self.street_col and self.street_col not in df.columns:
                 self.error_occurred.emit(f"Столбец '{self.street_col}' не найден в файле")
+                logging.critical('Column Street not found')
                 return
             
+            street_indices = {}
+            street_occurrences = {}
+
             nomenclatural_indices = []
+            final_indices = []
             list_numbers = []
             formatted_streets = []
-            total_rows = len(original_df)
+            total_rows = len(df)
             
-            for idx, row in original_df.iterrows():
+            for idx, row in df.iterrows():
                 try:
                     x_val = float(row[self.x_col])
                     y_val = float(row[self.y_col])
                     
                     nomenclatural_index = self.indexer.calculate_nomenclatural_index(x_val, y_val)
                     list_number = self.indexer.calculate_list_number(x_val, y_val)
-                    
+                    logging.info('self calculation passed')
+
                     if self.street_col:
                         street_name = str(row[self.street_col])
+
+                        if street_name in street_indices:
+                            street_indices[street_name].add(nomenclatural_index)
+                            street_occurrences[street_name] += 1
+                        else:
+                            street_indices[street_name] = {nomenclatural_index}
+                            street_occurrences[street_name] = 1
+                    
                         formatted_street = self.indexer.format_street_name(street_name)
                     else:
                         formatted_street = ""
+                        street_name = ""
+                    logging.info('formating passed')
+
                     
                     nomenclatural_indices.append(nomenclatural_index)
                     list_numbers.append(list_number)
-                    formatted_streets.append(formatted_street)
+                    formatted_streets.append(formatted_street)                           
+
                     
                 except (ValueError, TypeError):
                     nomenclatural_indices.append("Ошибка")
                     list_numbers.append("Ошибка")
                     formatted_streets.append("Ошибка")
-                
+                    logging.critical('function raised error')
+
                 progress = int((idx + 1) / total_rows * 100)
                 self.progress_updated.emit(progress)
             
+            logging.info(f"Starting second pass. Total rows: {len(df)}")
+            for idx, row in df.iterrows():
+                try:
+                    if self.street_col:
+                        street_name = str(row[self.street_col])
+                        
+                        # Безопасная проверка существования ключа
+                        if street_name in street_occurrences:
+                            if street_occurrences[street_name] > 1:
+                                sorted_indices = sorted(list(street_indices[street_name]))
+                                final_index = ", ".join(sorted_indices)
+                            else:
+                                final_index = nomenclatural_indices[idx]
+                        else:
+                            final_index = nomenclatural_indices[idx]
+                    else:
+                        final_index = nomenclatural_indices[idx]
+                    
+                    final_indices.append(final_index)
+                    logging.info('indices calculation passed')
+                
+                except Exception as e:
+                    logging.error(f"Error in second pass at row {idx}: {e}")
+                    final_indices.append(nomenclatural_indices[idx])
+
             result_df = pd.DataFrame()
             
-            result_df['Номенклатурный_индекс'] = nomenclatural_indices
+            result_df['Номенклатурный_индекс'] = final_indices
             result_df['Лист_карты'] = list_numbers
             result_df['Форматированная_улица'] = formatted_streets
             
             self.df_result = result_df
             self.finished_processing.emit(result_df)
-            
+
         except Exception as e:
+            logging.critical('Exception raised')
             self.error_occurred.emit(str(e))
+
+    
                     
 class ExcelProcessorApp(QMainWindow):
     def __init__(self):

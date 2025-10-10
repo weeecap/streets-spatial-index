@@ -97,11 +97,22 @@ class ProcessingThread(QThread):
                     if self.street_col:
                         street_name = str(row[self.street_col])
                         
-                        # Безопасная проверка существования ключа
                         if street_name in street_occurrences:
+                            logging.info(f"street_indices[{street_name}] = {street_indices[street_name]}, type = {type(street_indices[street_name])}")
                             if street_occurrences[street_name] > 1:
                                 sorted_indices = sorted(list(street_indices[street_name]))
-                                final_index = ", ".join(sorted_indices)
+                                index = "; ".join(sorted_indices)
+
+                                elements = index.strip().split()
+                                
+                                for i in range(1, len(elements)):
+                                    if elements[i] == elements[0]:
+                                        first_index = ' '.join(elements[:i-1])
+                                        additional_index = ' '.join(elements[i:])
+                                        final_index = f"{first_index}, {additional_index}"
+                                    else:
+                                        final_index = index
+
                             else:
                                 final_index = nomenclatural_indices[idx]
                         else:
@@ -117,12 +128,24 @@ class ProcessingThread(QThread):
                     final_indices.append(nomenclatural_indices[idx])
 
             result_df = pd.DataFrame()
+
+            status_list = []
+            for idx in range(len(df)):
+                logging.info(f'{idx} is unique')  
+                street_name = str(df.iloc[idx][self.street_col]).strip()
+                if street_name and street_name in street_occurrences and street_occurrences[street_name] > 1:
+                    status_list.append("Повторяется")
+                else:
+                    status_list.append('Уникальное')   
             
-            result_df['Номенклатурный_индекс'] = final_indices
-            result_df['Лист_карты'] = list_numbers
-            result_df['Форматированная_улица'] = formatted_streets
-            
+            result_df['Номенклатурный индекс'] = final_indices
+            result_df['Лист карты'] = list_numbers
+            result_df['Форматированная улица'] = formatted_streets
+            result_df['Статус уникальности'] = status_list
+
             self.df_result = result_df
+            result_df.drop_duplicates(subset=['Форматированная улица', 'Номенклатурный индекс'], inplace=True, keep='first')
+            result_df.sort_values(by = 'Форматированная улица', inplace=True)
             self.finished_processing.emit(result_df)
 
         except Exception as e:

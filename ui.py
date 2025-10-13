@@ -1,6 +1,11 @@
 import os
 import logging 
 import pandas as pd
+
+from docx import Document 
+from docx.shared import Inches
+from docx.enum.text import WD_TAB_ALIGNMENT
+
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QLabel, QLineEdit, QPushButton, QGroupBox, QProgressBar,
                             QFileDialog, QMessageBox, QTableWidget, QTableWidgetItem,
@@ -101,18 +106,26 @@ class ProcessingThread(QThread):
                             logging.info(f"street_indices[{street_name}] = {street_indices[street_name]}, type = {type(street_indices[street_name])}")
                             if street_occurrences[street_name] > 1:
                                 sorted_indices = sorted(list(street_indices[street_name]))
-                                index = "; ".join(sorted_indices)
-
-                                elements = index.strip().split()
                                 
-                                for i in range(1, len(elements)):
-                                    if elements[i] == elements[0]:
-                                        first_index = ' '.join(elements[:i-1])
-                                        additional_index = ' '.join(elements[i:])
-                                        final_index = f"{first_index}, {additional_index}"
+                                first_index_chars = list(sorted_indices[0])
+                                
+                                prefix_end = 0
+                                for i, char in enumerate(first_index_chars):
+                                    if char.isdigit():
+                                        prefix_end = i
+                                        break
+                                
+                                prefix = ''.join(first_index_chars[:prefix_end])
+                                
+                                if all(idx.startswith(prefix) for idx in sorted_indices):
+                                    numbers = [idx[len(prefix):] for idx in sorted_indices]
+                                    
+                                    if len(numbers) == 1:
+                                        final_index = f"{prefix}{numbers[0]}"
                                     else:
-                                        final_index = index
-
+                                        final_index = f"{prefix}{numbers[0]}, {', '.join(numbers[1:])}"
+                                else:
+                                    final_index = "; ".join(sorted_indices)
                             else:
                                 final_index = nomenclatural_indices[idx]
                         else:
@@ -376,19 +389,63 @@ class ExcelProcessorApp(QMainWindow):
         self.process_btn.setEnabled(True)
         self.status_bar.showMessage("Обработка завершена")
         
-        output_path, _ = QFileDialog.getSaveFileName(
+        output_path, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Сохранить результат как",
             "",
-            "Excel files (*.xlsx);;All files (*.*)"
+            "Excel files (*.xlsx);;Word files (*.docx)"
         )
         
         if output_path:
             try:
-                if not output_path.endswith('.xlsx'):
-                    output_path += '.xlsx'
+                if selected_filter == "Excel files (*.xlsx)":
+                    if not output_path.endswith('.xlsx'):
+                        base_path = output_path.rsplit('.', 1)[0] if '.' in output_path else output_path
+                        output_path = base_path + '.xlsx'
+                elif selected_filter == "Word files (*.docx)":
+                    if not output_path.endswith('.docx'):
+                        base_path = output_path.rsplit('.', 1)[0] if '.' in output_path else output_path
+                        output_path = base_path + '.docx'
                 
-                df.to_excel(output_path, index=False)
+                if output_path.endswith('.docx'):
+                    from docx import Document
+                    from docx.shared import Inches
+                    from docx.enum.text import WD_TAB_ALIGNMENT
+                    
+                    doc = Document()
+                    section = doc.sections[0]
+                    # section.paragraph_format.tab_stops.add_tab_stop(Inches(4.0), WD_TAB_ALIGNMENT.LEFT)
+                    
+                    title = doc.add_heading('Обработанные данные улиц', 0)
+                    
+                    has_street = 'Форматированная улица' in df.columns
+                    has_index = 'Номенклатурный индекс' in df.columns
+                    
+                    if has_street and has_index:
+                        for _, row in df.iterrows():
+                            p = doc.add_paragraph()
+                            street = str(row['Форматированная улица'])
+                            index = str(row['Номенклатурный индекс'])
+                            
+                            p.add_run(street)
+                            p.add_run('\t')
+                            p.add_run(index).bold = True
+                    else:
+                        table = doc.add_table(rows=len(df)+1, cols=len(df.columns))
+                        table.style = 'Table Grid'
+                        
+                        for i, column in enumerate(df.columns):
+                            table.cell(0, i).text = str(column)
+                        
+                        for i, (idx, row) in enumerate(df.iterrows(), 1):
+                            for j, value in enumerate(row):
+                                table.cell(i, j).text = str(value)
+                    
+                    doc.save(output_path)
+                    
+                else:
+                    df.to_excel(output_path, index=False)
+
                 QMessageBox.information(self, "Успех", f"Файл сохранен как:\n{output_path}")
                 self.status_bar.showMessage("Файл успешно обработан и сохранен")
                 

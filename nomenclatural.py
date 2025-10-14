@@ -47,7 +47,17 @@ class NomenclaturalStreetIndexer:
 
         return list_number
     
+    # def capitalize(self, street_name: str) -> str: 
+    #     street_capitalizating = street_name.capitalize()
+
+    #     if '.' in street_capitalizating:
+    #         str
+
+
+    #     return None 
+    
     def format_street_name(self, street_name: str) -> str:
+        
         parts = street_name.strip().split()
         
         if len(parts) < 2:
@@ -56,19 +66,20 @@ class NomenclaturalStreetIndexer:
         street_types = ['УЛ.', 'ПРОСП.', 'ПР.', 'ПЕР.', 'Ш.', 'НАБ.', 'Б-Р', 'БУЛЬВАР', 'ПЛ.', 'ПЛОЩАДЬ']
 
         if parts[0] in street_types:
-            street_type = parts[0]
-            name_only = ' '.join(parts[1:])
+            street_type = parts[0].lower()
+            name_only = ' '.join(parts[1:]).capitalize()
             return f"{name_only}, {street_type}"
         elif re.match(r'^\d+-й\b', parts[0], re.IGNORECASE ):
             if parts[1] in street_types:
-                name_part = ' '.join(parts[2:])
-                prefix_part = ' '.join(parts[:2])
+                name_part = ' '.join(parts[2:]).capitalize()
+                prefix_part = ' '.join(parts[:2]).lower()
                 return f"{name_part}, {prefix_part}"
             elif parts[-1] in street_types:
-                name = ' '.join(parts[1:-1])
-                prefix = f"{parts[0]} {parts[-1]}"
+                name = ' '.join(parts[1:-1]).capitalize()
+                prefix = f"{parts[0].lower()} {parts[-1].lower()}"
                 return f"{name}, {prefix}"      
         elif parts[-1] in street_types:
-            return street_name
+            return street_name.capitalize()
         else:
-            return street_name
+            return street_name.capitalize()
+     

@@ -3,3 +3,5 @@ myenv/
 __pycache__/
 *.log
 test.py 
+build/
+dist/

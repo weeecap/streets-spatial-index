@@ -4,7 +4,6 @@ import pandas as pd
 
 from docx import Document 
 from docx.shared import Inches
-from docx.enum.text import WD_TAB_ALIGNMENT
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QLabel, QLineEdit, QPushButton, QGroupBox, QProgressBar,
@@ -104,28 +103,61 @@ class ProcessingThread(QThread):
                         
                         if street_name in street_occurrences:
                             logging.info(f"street_indices[{street_name}] = {street_indices[street_name]}, type = {type(street_indices[street_name])}")
-                            if street_occurrences[street_name] > 1:
-                                sorted_indices = sorted(list(street_indices[street_name]))
-                                
-                                first_index_chars = list(sorted_indices[0])
-                                
-                                prefix_end = 0
-                                for i, char in enumerate(first_index_chars):
+                            sorted_indices = sorted(list(street_indices[street_name]))
+
+                            first_index_chars = list(sorted_indices[0])
+
+                            number_parts = []
+                            for idx in sorted_indices:
+                                for i, char in enumerate(idx):
                                     if char.isdigit():
-                                        prefix_end = i
+                                        number_part = idx[i:]  
+                                        number_parts.append(number_part)
                                         break
-                                
-                                prefix = ''.join(first_index_chars[:prefix_end])
-                                
-                                if all(idx.startswith(prefix) for idx in sorted_indices):
-                                    numbers = [idx[len(prefix):] for idx in sorted_indices]
-                                    
-                                    if len(numbers) == 1:
-                                        final_index = f"{prefix}{numbers[0]}"
-                                    else:
-                                        final_index = f"{prefix}{numbers[0]}, {', '.join(numbers[1:])}"
                                 else:
-                                    final_index = "; ".join(sorted_indices)
+                                    number_parts.append(idx)
+
+                            prefix_end = 0
+                            for i, char in enumerate(first_index_chars):
+                                if char.isdigit():
+                                    prefix_end = i
+                                    break
+
+                            prefix = ''.join(first_index_chars[:prefix_end])
+
+                            if all(idx.startswith(prefix) for idx in sorted_indices):
+                                numbers = [idx[len(prefix):] for idx in sorted_indices]
+                                
+                                if len(numbers) == 1:
+                                    final_index = f"{prefix}{numbers[0]}"
+                                else:
+                                    final_index = f"{prefix}{numbers[0]}, {', '.join(numbers[1:])}"
+
+                            elif len(number_parts) >= 2:
+                                number_to_prefixes = {}
+                                for idx, num_part in zip(sorted_indices, number_parts):
+                                    if num_part not in number_to_prefixes:
+                                        number_to_prefixes[num_part] = []
+                                    
+                                    prefix_chars = []
+                                    for char in idx:
+                                        if char.isdigit():
+                                            break
+                                        if char != '-':
+                                            prefix_chars.append(char)
+                                    prefix_str = ''.join(prefix_chars)
+                                    
+                                    number_to_prefixes[num_part].append(prefix_str)
+                                
+                                result_parts = []
+                                for num_part, prefixes in number_to_prefixes.items():
+                                    if len(prefixes) == 1:
+                                        result_parts.append(f"{prefixes[0]}-{num_part}")
+                                    else:
+                                        prefixes_str = ', '.join(prefixes)
+                                        result_parts.append(f"{prefixes_str}-{num_part}")
+                                
+                                final_index = "; ".join(result_parts)
                             else:
                                 final_index = nomenclatural_indices[idx]
                         else:
@@ -408,9 +440,6 @@ class ExcelProcessorApp(QMainWindow):
                         output_path = base_path + '.docx'
                 
                 if output_path.endswith('.docx'):
-                    from docx import Document
-                    from docx.shared import Inches
-                    from docx.enum.text import WD_TAB_ALIGNMENT
                     
                     doc = Document()
                     section = doc.sections[0]
